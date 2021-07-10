@@ -1,0 +1,4 @@
+telegram-channel-id:
+telegram-bot-token:
+evt-ids: [4648, 4625]
+enable-sysmon: true

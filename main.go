@@ -1,48 +1,54 @@
 package main
 
 import (
-	"fmt"
-	winlog "github.com/scalingdata/gowinlog"
+	winlog "github.com/bi-zone/gowinlog"
 )
 
+func inEvtIds(id uint64, evtIds []uint64) bool {
+	for _, confId := range evtIds {
+		if confId == id {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
+	conf := loadConfig()
+	teleBot := newTelegramBot(conf.TelegramBotToken, conf.TelegramChannelId)
+	teleBot.run()
+	teleBot.sendMsg("started")
+
 	watcher, err := winlog.NewWinLogWatcher()
 	if err != nil {
-		fmt.Printf("Couldn't create watcher: %v\n", err)
+		teleBot.sendMsg(err.Error())
 		return
 	}
 
-	watcher.SubscribeFromNow("Microsoft-Windows-Sysmon/Operational","*")
-	watcher.SubscribeFromNow("Security","*")
-	
-	bot := TelegramBot{
-		Bot:       nil,
-		// create channel => get channel id
-		ChannelId: "",
+	if conf.EnableSysmon {
+		err = watcher.SubscribeFromNow("Microsoft-Windows-Sysmon/Operational", "*")
+		if err != nil {
+			teleBot.sendMsg(err.Error())
+			return
+		}
 	}
-	// create new bot with botfather => add bot to channel 's admin => get bot 's token
-	bot.NewBot("")
+
+	err = watcher.SubscribeFromNow("Security", "*")
+	if err != nil {
+		teleBot.sendMsg(err.Error())
+		return
+	}
+
 	for {
 		select {
-		case evt := <- watcher.Event():
+		case evt := <-watcher.Event():
 			switch evt.Channel {
 			case "Security":
-				switch evt.EventId {
-				case 4648:
-					//log on success
-					bot.SendReport(evt.Msg)
-				case 4625:
-					//log on fail
-					bot.SendReport(evt.Msg)
-				case 4663:
-					//file access
-					bot.SendReport(evt.Msg)
-				case 5145:
-					//file access
-					bot.SendReport(evt.Msg)
+				if inEvtIds(evt.EventId, conf.EvtIds) {
+					teleBot.sendMsg(evt.Msg)
 				}
 			case "Microsoft-Windows-Sysmon/Operational":
-				bot.SendReport(evt.Msg)
+				teleBot.sendMsg(evt.Msg)
 			}
 		}
 	}
